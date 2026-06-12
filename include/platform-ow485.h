@@ -29,7 +29,7 @@
 
 #define DEV_FW_NAME             "Irmacos"
 #define DEV_FW_MAJ              0
-#define DEV_FW_MIN              2
+#define DEV_FW_MIN              3
 #define DEV_FW_FIX              0
 #define DEV_FW_INFO             DEV_FW_NAME " v" toSTR(DEV_FW_MAJ) "." toSTR(DEV_FW_MIN) "." toSTR(DEV_FW_FIX)
 

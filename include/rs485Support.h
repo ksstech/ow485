@@ -25,3 +25,6 @@ void rs485Status(bool);
 void serialWrite(const char *);
 
 void serialPrintFOptions(uint16_t, const char *, ...);
+
+/** Print tag ROM + result via RS485 (handles enable/disable). */
+void tagPrintRomInfo(bool reverse);

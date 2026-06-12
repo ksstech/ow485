@@ -70,7 +70,7 @@
  *  PA3  LED_AUX   Optional second status LED (hardware PWM WO3 → PA3).
  *                 If not fitted, leave configure(2, …) absent or call stop(2).
  *
- *  PA4  1-WIRE    DS1990 / RW1990 bus.  4.7 kΩ pullup to VCC required.
+ *  PA4  1-WIRE    DS1990 / RW1990 / DS18xx bus.  2 kΩ pullup to VCC.
  *
  *  PA5  LED       Primary status LED, hardware PWM WO5 → PA5.
  *                 OutputChannel ch0, PWM mode (levelLow=0, levelHigh=255).
@@ -112,6 +112,8 @@
  *  2026/05/21  v0.1.6    Replace iButtonTag library with native OneWire functions
  *  2026/05/21  v0.2.0    Rewritten (with Claude.ai) 1Wire support
  *  2026/06/12  v0.2.1    StatusLED2 → OutputChannel; relay added as ch1 (digital mode)
+ *  2026/06/12  v0.3.0    1-Wire split into OneWireBus + OneWireTag + DS18Temp;
+ *                          oneWireReadCheck auto-detects iButton vs DS18xx
  */
 
 // BUILD definitions required by includes below...
@@ -129,7 +131,9 @@
 #include "platform-ow485.h"  // hardware platform related, not application specific
 #include "rs485Support.h"
 #include "OutputChannel.h"
+#include "OneWireBus.h"
 #include "OneWireTag.h"
+#include "DS18Temp.h"
 #include "ow485-comms.h"
 
 // UART Buffer sizes
@@ -162,7 +166,9 @@ void printChannelF(uint8_t ch, void(*handler)(const char*, ...)) { out.printChan
 void printAllF(void(*handler)(const char*, ...)) { out.printAllF(handler); }
 
 /* ── Peripheral objects ─────────────────────────────────────────────────── */
-OneWireTag owTag(PIN_1WIRE);
+OneWireBus owBus(PIN_1WIRE);
+OneWireTag owTag(owBus);
+DS18Temp   owTemp(owBus);
 
 uint8_t DevID, owAddr;
 uint32_t lastMsOneWire;
@@ -247,29 +253,55 @@ void systemReset(void) {
    1-Wire demonstration — non-blocking poll via millis()
    ══════════════════════════════════════════════════════════════════════════ */
 
+static void printDS18Info(void) {
+  char buf[56];
+  int n = snprintf(buf, sizeof(buf), "%s [", DS18Temp::modelName(owTemp.model));
+  for (uint8_t i = 1; i < 7; ++i)
+    n += snprintf(buf+n, sizeof(buf)-n, "%02x", owTemp.rom[i]);
+  snprintf(buf+n, sizeof(buf)-n, "] %.2fC %dbit\n", owTemp.tempC, owTemp.getResolution());
+  serialPrintFOptions(0, buf);
+}
+
 void oneWireWrite(void) {
   const uint8_t serial[6] = { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB };
   OneWireTag::buildRomCode(serial, owTag.rom);
-  owTag.program(0);
-  if (DEBUG_LEVEL & DEBUG_1WIRE) owTag.printRomInfo(1);   // shows what the tag actually contains after the attempt
+  owTag.program();
+  if (DEBUG_LEVEL & DEBUG_1WIRE) tagPrintRomInfo(1);
 }
 
 void oneWireRead(void) {
-  /*
-     * readRaw() returns raw bytes regardless of CRC or family code.
-     * Use during bring-up to see exactly what the tag is sending.
-     * Switch to read() once the bus is confirmed working.
-     */
   owTag.readRaw();
   if (owTag.result == OWResult::OK)
-    owTag.printRomInfo(1);
+    tagPrintRomInfo(1);
 }
 
 void oneWireReadCheck(void) {
-  if (millis() - lastMsOneWire < 500UL)
-    return;
+  static bool ds18Pending = false;
+  if (millis() - lastMsOneWire < 500UL) return;
   lastMsOneWire = millis();
-  oneWireRead();
+
+  // Harvest a pending DS18 conversion if ready
+  if (ds18Pending) {
+    if (!owTemp.isReady()) return;
+    ds18Pending = false;
+    if (owTemp.readTemp() == OWResult::OK) printDS18Info();
+    return;
+  }
+
+  // Probe bus via raw ROM read (no family filter)
+  owTag.readRaw();
+  if (owTag.result != OWResult::OK) return;
+
+  if (OneWireTag::isCompatible(owTag.rom)) {
+    // iButton: DS1990 / RW1990 (family 0x01)
+    tagPrintRomInfo(1);
+  } else {
+    // Check for DS18xx temperature sensor
+    memcpy(owTemp.rom, owTag.rom, OW_ROM_BYTES);
+    owTemp.identify();
+    if (owTemp.model != DS18Model::UNKNOWN)
+      ds18Pending = (owTemp.startConversion() == OWResult::OK);
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

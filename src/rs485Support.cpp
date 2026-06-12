@@ -6,6 +6,7 @@
 #include <USERSIG.h>
 
 #include "platform-ow485.h"
+#include "OneWireBus.h"
 #include "OneWireTag.h"
 #include "rs485Support.h"
 
@@ -23,6 +24,33 @@ extern OneWireTag owTag;
 
 extern void printChannelF(uint8_t ch, void(*handler)(const char*, ...));
 extern void printAllF(void(*handler)(const char*, ...));
+
+/* ── Tag ROM info formatter ─────────────────────────────────────────────── */
+
+static void formatTagRomInfo(char* buf, uint8_t size, bool reverse) {
+    const char* pMsg;
+    switch (owTag.result) {
+        case OWResult::OK:           pMsg = "OK";           break;
+        case OWResult::NO_PRESENCE:  pMsg = "NO_PRESENCE";  break;
+        case OWResult::CRC_ERROR:    pMsg = "CRC_ERROR";    break;
+        case OWResult::WRONG_FAMILY: pMsg = "WRONG_FAMILY"; break;
+        case OWResult::VERIFY_FAIL:  pMsg = "VERIFY_FAIL";  break;
+        case OWResult::BUS_ERROR:    pMsg = "BUS_ERROR";    break;
+        default:                     pMsg = "UNKNOWN";      break;
+    }
+    int n = snprintf(buf, size, "F=%02x [", owTag.rom[0]);
+    for (uint8_t i = 1; i < 7; ++i)
+        n += snprintf(buf+n, size-n, "%02x", reverse ? owTag.rom[7-i] : owTag.rom[i]);
+    snprintf(buf+n, size-n, "] C=%02x (%d) %s\n", owTag.rom[7], (int)owTag.result, pMsg);
+}
+
+void tagPrintRomInfo(bool reverse) {
+    rs485Status(true);
+    char buf[48];
+    formatTagRomInfo(buf, sizeof(buf), reverse);
+    serialWrite(buf);
+    rs485Status(false);
+}
 
 char mapIndexToChar(int8_t Idx) { return ((Idx % 8) == 0) ? ' ' : ((Idx % 4) == 0) ? '|' : ((Idx % 2) == 0) ? '-' : ':'; }
 
@@ -90,7 +118,7 @@ static int serialPrintArray(const char * Heading, uint8_t (*Func)(int), int16_t 
 void serialPrintFOptions(uint16_t Options, const char * fmt, ...) {
   rs485Status(true);
   if (Options == 0)                 goto optionsDone;
-  if (Options & PO_ONEWIRE)         owTag.printRomInfo(1);
+  if (Options & PO_ONEWIRE)         { char buf[48]; formatTagRomInfo(buf, sizeof(buf), true); serialWrite(buf); }
   if (Options & PO_RLY_LED)         printAllF(serialPrintF);
   if (Options & PO_FIRMWARE)        serialPrintF("%s %dMHz\n", (DEV_HW_INFO " / " DEV_FW_INFO " / CLK="), F_CPU/1000000);
   if (Options & PO_CMDBUF)          serialPrintF("'%s' L=%d\n", CmdBuf.c_str(), CmdBuf.length());
