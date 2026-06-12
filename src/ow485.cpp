@@ -310,7 +310,6 @@ void oneWireReadCheck(void) {
 
 void setup(void) {
   rs485Setup();                             // Initialise RS485 serial comms
-  CmdBuf.reserve(32);                       // 2(addr) + 1(sep) + 2(cmd) + 12(code) + 1(NUL)
   DevID = USERSIG.read(UR_IDX_DEVID);       // Setup Device ID to be used
   if (DevID == 0xFF)                        // If no valid address set (yet)
     DevID = 0x10;                           // use default
@@ -351,7 +350,7 @@ void loop() {
       if (DEBUG_LEVEL > 2) serialWrite("Invalid packet\n");
     }
     // Reset ALL command buffer values
-    CmdBuf = "";
+    hostCmdReset();
   } else {
     // do whatever else requires attention.
   }

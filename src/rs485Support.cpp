@@ -16,7 +16,8 @@ uint8_t UPhr, UPmin, UPsec;
 uint16_t UPdays, UPmsec;
 
 extern uint8_t DevID;
-extern String CmdBuf;
+extern const char* hostCmdStr(void);
+extern uint8_t     hostCmdLen(void);
 
 // External variables
 extern int __heap_start, *__brkval;
@@ -121,7 +122,7 @@ void serialPrintFOptions(uint16_t Options, const char * fmt, ...) {
   if (Options & PO_ONEWIRE)         { char buf[48]; formatTagRomInfo(buf, sizeof(buf), true); serialWrite(buf); }
   if (Options & PO_RLY_LED)         printAllF(serialPrintF);
   if (Options & PO_FIRMWARE)        serialPrintF("%s %dMHz\n", (DEV_HW_INFO " / " DEV_FW_INFO " / CLK="), F_CPU/1000000);
-  if (Options & PO_CMDBUF)          serialPrintF("'%s' L=%d\n", CmdBuf.c_str(), CmdBuf.length());
+  if (Options & PO_CMDBUF)          serialPrintF("'%s' L=%d\n", hostCmdStr(), (int)hostCmdLen());
   if (Options & PO_SYSSTAT) {
     int Mem = (int)(&Mem) - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
     serialPrintF("Vcc=%umV  Temp=%u°C  Free=%uB\n", readSupplyVoltage(), readTemp() - 273, Mem);
