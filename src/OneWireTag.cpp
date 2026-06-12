@@ -153,7 +153,7 @@ uint8_t OneWireTag::_readByte()
 void OneWireTag::_writeBitRW(uint8_t bit)
 {
     /*
-     * 5 ms LOW = '1', 10 ms LOW = '0'.
+     * 6 ms LOW = '1', 12 ms LOW = '0'.
      * Interrupts enabled during delay() so millis() and PWM continue.
      */
     _vport[VPORT_OUT] &= ~_bitmask;

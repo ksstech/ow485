@@ -41,7 +41,7 @@
  *
  * HARDWARE
  * ────────
- *  PA4 → 1-Wire bus, 4.7 kΩ pullup to VCC (3.3 V) required.
+ *  PA4 → 1-Wire bus, 2 kΩ pullup to VCC (3.3 V).
  *
  * IDE SETTINGS
  * ────────────
@@ -62,7 +62,7 @@ static constexpr uint8_t RW_CMD_WRITE_ALT = 0xC1u;
 static constexpr uint8_t RW_PULSE_ONE_MS  = 6u;
 static constexpr uint8_t RW_PULSE_ZERO_MS = 12u;
 static constexpr uint8_t RW_RELEASE_MS    = 2u;
-static constexpr uint8_t RW_ENTER_MS      = 2u;
+static constexpr uint8_t RW_ENTER_MS      = 10u;
 static constexpr uint16_t RW_SETTLE_MS    = 300u;
 
 /* ── Result codes ───────────────────────────────────────────────────────── */
