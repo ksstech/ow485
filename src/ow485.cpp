@@ -114,6 +114,9 @@
  *  2026/06/12  v0.2.1    StatusLED2 → OutputChannel; relay added as ch1 (digital mode)
  *  2026/06/12  v0.3.0    1-Wire split into OneWireBus + OneWireTag + DS18Temp;
  *                          oneWireReadCheck auto-detects iButton vs DS18xx
+ *  2026/06/12  v0.4.0    ow485-comms: command history (8 deep), VT100 line editor,
+ *                          immediate RS485 echo; CMD_MAX=33; fix bare serialWrite()
+ *                          calls in loop() that bypassed RS485 direction control
  */
 
 // BUILD definitions required by includes below...
@@ -342,12 +345,12 @@ void loop() {
         else if (strncmp(Command, "SA", 2) == 0)  systemSetAddress();
         else if (strncmp(Command, "SI", 2) == 0)  serialPrintFOptions(PO_ADDR|PO_FIRMWARE|PO_UPTIME|PO_SYSSTAT|PO_RLY_LED|PO_ONEWIRE|PO_USERROW|PO_EEPROM, NULL);
         else if (strncmp(Command, "SR", 2) == 0)  systemReset();
-        else                                      serialWrite(helpText);
+        else                                      { rs485Status(true); serialWrite(helpText); rs485Status(false); }
       } else {
-        if (DEBUG_LEVEL & DEBUG_TRACK) serialWrite("Unknown Address\n");
+        if (DEBUG_LEVEL & DEBUG_TRACK) { rs485Status(true); serialWrite("Unknown Address\n"); rs485Status(false); }
       }
     } else {
-      if (DEBUG_LEVEL > 2) serialWrite("Invalid packet\n");
+      if (DEBUG_LEVEL > 2) { rs485Status(true); serialWrite("Invalid packet\n"); rs485Status(false); }
     }
     // Reset ALL command buffer values
     hostCmdReset();
