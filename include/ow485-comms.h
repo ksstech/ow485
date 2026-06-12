@@ -4,10 +4,10 @@
 // All state is pre-allocated; no heap usage.
 //
 // Static allocation breakdown:
-//   _hist[CMD_HIST][CMD_MAX]  =  8 × 48 = 384 bytes  (history ring)
-//   _edit[CMD_MAX]            =      48 bytes          (edit line)
+//   _hist[CMD_HIST][CMD_MAX]  =  8 × 33 = 264 bytes  (history ring)
+//   _edit[CMD_MAX]            =      33 bytes          (edit line)
 //   state variables           =     ~12 bytes
-//   Total                     =    ~444 bytes
+//   Total                     =    ~309 bytes
 //
 // Terminal sequences understood (standard VT100/xterm):
 //   ESC [ A   Up arrow    — recall older history entry
@@ -19,7 +19,7 @@
 //   ESC [ 3 ~ Delete      — delete character at cursor
 //   DEL / BS  (0x7f/0x08) — delete character before cursor
 
-static constexpr uint8_t CMD_MAX  = 48;   // max command chars including NUL
+static constexpr uint8_t CMD_MAX  = 33;   // max command chars including NUL (32 data + NUL)
 static constexpr uint8_t CMD_HIST = 8;    // history ring depth
 
 static char    _hist[CMD_HIST][CMD_MAX];  // history ring buffer
