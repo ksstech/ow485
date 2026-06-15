@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Andre M. Maree / KSS Technologies (Pty) Ltd.
 /**
  * OneWireBus.h  —  Low-level 1-Wire bus driver using direct VPORT access
  *                   for ATtiny3224 / megaTinyCore 2.6.x

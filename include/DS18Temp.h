@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Andre M. Maree / KSS Technologies (Pty) Ltd.
 /**
  * DS18Temp.h  —  DS18xx 1-Wire temperature sensor driver
  *

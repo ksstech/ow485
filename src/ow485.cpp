@@ -102,56 +102,20 @@
  *  Broadcast address 0xFF
  *  Start of open window for slaves to respond if needed
  *
- *  Date        Version   Comments
- *  2026/05/11  v0.1.0    Initial code
- *  2026/05/13  v0.1.1    Centralise all formatted print output in single function
- *  2026/05/16  v0.1.2    Add support for PWM on LED
- *  2026/05/18  v0.1.3    Adds initial (non -functional) support for Serial1/UART1 debug output on PAx
- *  2026/05/18  v0.1.4    Separtated into multiple source headers
- *  2026/05/18  v0.1.5    Changes to PWM FSM
- *  2026/05/21  v0.1.6    Replace iButtonTag library with native OneWire functions
- *  2026/05/21  v0.2.0    Rewritten (with Claude.ai) 1Wire support
- *  2026/06/12  v0.2.1    StatusLED2 → OutputChannel; relay added as ch1 (digital mode)
- *  2026/06/12  v0.3.0    1-Wire split into OneWireBus + OneWireTag + DS18Temp;
- *                          oneWireReadCheck auto-detects iButton vs DS18xx
- *  2026/06/12  v0.4.0    ow485-comms: command history (8 deep), VT100 line editor,
- *                          immediate RS485 echo; CMD_MAX=33; fix bare serialWrite()
- *                          calls in loop() that bypassed RS485 direction control
  */
-
-// BUILD definitions required by includes below...
-#define DEBUG_TRACK     0x0001
-#define DEBUG_CMDBUF    0x0002
-#define DEBUG_1WIRE     0x0004
-#define DEBUG_PWM       0x0008
-#define DEBUG_ADDRESS   0x0010
-
-#define DEBUG_LEVEL     0x0005
 
 #include <Arduino.h>
 #include <USERSIG.h>
 
-#include "platform-ow485.h"  // hardware platform related, not application specific
+#include "platform-ow485.h"
 #include "rs485Support.h"
+#include "ow485-comms.h"
 #include "OutputChannel.h"
 #include "OneWireBus.h"
 #include "OneWireTag.h"
+#if OW_DS18TEMP
 #include "DS18Temp.h"
-#include "ow485-comms.h"
-
-// UART Buffer sizes
-#undef SERIAL_TX_BUFFER_SIZE
-#undef SERIAL_RX_BUFFER_SIZE
-#define SERIAL_TX_BUFFER_SIZE 32
-#define SERIAL_RX_BUFFER_SIZE 32
-
-// USERROW usage
-#define UR_IDX_DEVID 0  // first byte in the array
-
-/* ── Pin definitions ────────────────────────────────────────────────────── */
-static constexpr uint8_t PIN_RELAY = PIN_PA2;
-static constexpr uint8_t PIN_1WIRE = PIN_PA4;
-static constexpr uint8_t PIN_LED1  = PIN_PA5;
+#endif
 
 /* ── OutputChannel instance ──────────────────────────────────────────────────
  * Pin array is the single source of pin assignment for all output channels.
@@ -161,17 +125,18 @@ static constexpr uint8_t PIN_LED1  = PIN_PA5;
  * The array length N_CH is deduced by the template from the initialiser;
  * adding a third element automatically generates a 3-channel OutputChannel.
  */
-static const uint8_t kOutPins[] = { PIN_LED1, PIN_RELAY };
+static const uint8_t kOutPins[] = { pinLED, pinRelay };
 OutputChannel<sizeof(kOutPins)> out(kOutPins);
-
-// Bridge definitions — out is in scope here
 void printChannelF(uint8_t ch, void(*handler)(const char*, ...)) { out.printChannelF(ch, handler); }
 void printAllF(void(*handler)(const char*, ...)) { out.printAllF(handler); }
 
 /* ── Peripheral objects ─────────────────────────────────────────────────── */
-OneWireBus owBus(PIN_1WIRE);
+OneWireBus owBus(pin1Wire);
 OneWireTag owTag(owBus);
-DS18Temp   owTemp(owBus);
+#if OW_DS18TEMP
+DS18Temp owTemp(owBus);
+bool ds18Pending = false;
+#endif
 
 uint8_t DevID, owAddr;
 uint32_t lastMsOneWire;
@@ -227,7 +192,7 @@ void actuatePWM(void) {
     para[Idx++] = (uint16_t)iVal;   // no, store value
   } while (Idx < 6);
   #if (DEBUG_LEVEL & DEBUG_PWM)
-    serialPrintFOptions(PO_ADDR, "iVal=%lx Idx=%d 0=%x 1=%x 2=%x 3=%x 4=%x 5=%x", iVal, Idx,
+    serialPrintFOptions(0,"iVal=%lx Idx=%d 0=%x 1=%x 2=%x 3=%x 4=%x 5=%x", iVal, Idx,
                       para[0], para[1], para[2], para[3], para[4], para[5]);
   #endif
   if (Idx == 0)
@@ -237,73 +202,86 @@ void actuatePWM(void) {
 
 void systemSetAddress(void) {
   long int iVal = hostConsumeHexValue(2);
-  if (iVal == -1) {
-    if (DEBUG_LEVEL & DEBUG_ADDRESS) serialPrintFOptions(PO_ADDR, "Invalid HEX");
-    return;
+  if (iVal != -1) {
+    USERSIG.update(UR_IDX_DEVID, DevID = owAddr = (uint8_t)iVal);
+    USERSIG.flush();
+  } else {
+    if (DEBUG_LEVEL & DEBUG_ADDRESS) serialPrintFOptions(0, "Invalid HEX address");
   }
-  USERSIG.update(UR_IDX_DEVID, DevID = owAddr = (uint8_t)iVal);
-  USERSIG.flush();
 }
 
 void systemReset(void) {
-  serialPrintFOptions(PO_ADDR, "Rebooting");
+  if (DEBUG_LEVEL & DEBUG_TRACK)      serialPrintFOptions(0, "Rebooting");
   _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_8CLK_gc);  //enable the WDT, minimum timeout
-  while (1)
-    ;  // spin until reset
+  while (1);  // spin until reset
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
    1-Wire demonstration — non-blocking poll via millis()
    ══════════════════════════════════════════════════════════════════════════ */
 
-static void printDS18Info(void) {
-  char buf[56];
-  int n = snprintf(buf, sizeof(buf), "%s [", DS18Temp::modelName(owTemp.model));
-  for (uint8_t i = 1; i < 7; ++i)
-    n += snprintf(buf+n, sizeof(buf)-n, "%02x", owTemp.rom[i]);
-  snprintf(buf+n, sizeof(buf)-n, "] %.2fC %dbit\n", owTemp.tempC, owTemp.getResolution());
-  serialPrintFOptions(0, buf);
-}
-
-void oneWireWrite(void) {
+static void oneWireWriteTag(void) {
   const uint8_t serial[6] = { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB };
   OneWireTag::buildRomCode(serial, owTag.rom);
   owTag.program();
-  if (DEBUG_LEVEL & DEBUG_1WIRE) tagPrintRomInfo(1);
+  if (DEBUG_LEVEL & DEBUG_1WIRE) serialPrintFOptions(PO_1W_BUTTON, "Write");
 }
 
-void oneWireRead(void) {
+static void oneWireReadTag(void) {
   owTag.readRaw();
-  if (owTag.result == OWResult::OK)
-    tagPrintRomInfo(1);
+  if (DEBUG_LEVEL & DEBUG_1WIRE) serialPrintFOptions(PO_1W_BUTTON, "Read");
 }
 
-void oneWireReadCheck(void) {
-  static bool ds18Pending = false;
-  if (millis() - lastMsOneWire < 500UL) return;
+static void oneWireReadCheck(void) {
+  if (millis() - lastMsOneWire < OW_SCAN_MS) return;
   lastMsOneWire = millis();
 
-  // Harvest a pending DS18 conversion if ready
-  if (ds18Pending) {
-    if (!owTemp.isReady()) return;
+#if OW_DS18TEMP
+  // Harvest a completed DS18 conversion — does NOT skip the iButton scan below.
+  if (ds18Pending && owTemp.isReady()) {
     ds18Pending = false;
-    if (owTemp.readTemp() == OWResult::OK) printDS18Info();
-    return;
+    owTemp.readTemp();
+    if (DEBUG_LEVEL & DEBUG_1WIRE) serialPrintFOptions(PO_1W_DS1820, NULL);
   }
+#endif
 
-  // Probe bus via raw ROM read (no family filter)
-  owTag.readRaw();
-  if (owTag.result != OWResult::OK) return;
+  // Dedicated scan instance — owTag.rom is untouched by the search so the last
+  // valid iButton read persists until systemPoll() consumes and clears it.
+  static OneWireTag  scanTag(owBus);
+  static uint32_t    lastMsDS18 = 0;
 
-  if (OneWireTag::isCompatible(owTag.rom)) {
-    // iButton: DS1990 / RW1990 (family 0x01)
-    tagPrintRomInfo(1);
-  } else {
-    // Check for DS18xx temperature sensor
-    memcpy(owTemp.rom, owTag.rom, OW_ROM_BYTES);
-    owTemp.identify();
-    if (owTemp.model != DS18Model::UNKNOWN)
-      ds18Pending = (owTemp.startConversion() == OWResult::OK);
+  // SEARCH ROM pass 1: collect all ROM codes before taking any bus action.
+  // Two passes prevent a bus reset (inside startConversion) from corrupting
+  // an in-progress SEARCH ROM sequence when both device types are present.
+  uint8_t roms[2][OW_ROM_BYTES];
+  uint8_t nFound = 0;
+  scanTag.resetSearch();
+  while (nFound < 2 && scanTag.scanNext() == OWResult::OK)
+    memcpy(roms[nFound++], scanTag.rom, OW_ROM_BYTES);
+
+  // Pass 2: identify and handle each device
+  for (uint8_t i = 0; i < nFound; i++) {
+    if (OneWireTag::isCompatible(roms[i])) {
+      // iButton (DS1990 / RW1990 — family 0x01): update owTag only on a new find
+      memcpy(owTag.rom, roms[i], OW_ROM_BYTES);
+      owTag.result      = OWResult::OK;
+      owTag.timestampMs = millis();
+      if (DEBUG_LEVEL & DEBUG_1WIRE) serialPrintFOptions(PO_1W_BUTTON, NULL);
+    }
+#if OW_DS18TEMP
+    else {
+      // DS18xx temperature sensor — hardwired; trigger conversion every 5 s
+      memcpy(owTemp.rom, roms[i], OW_ROM_BYTES);
+      owTemp.identify();
+      if (owTemp.model != DS18Model::UNKNOWN && !ds18Pending &&
+          millis() - lastMsDS18 >= OW_DS18_INTERVAL_MS) {
+        if (owTemp.startConversion() == OWResult::OK) {
+          ds18Pending = true;
+          lastMsDS18  = millis();
+        }
+      }
+    }
+#endif
   }
 }
 
@@ -311,21 +289,55 @@ void oneWireReadCheck(void) {
    setup()
    ══════════════════════════════════════════════════════════════════════════ */
 
+void systemPoll(void) {
+  bool bTagSent = false;
+  rs485Status(true);
+  if (owTag.rom[0]) {
+    serialPrintRomID(owTag.rom, true);
+    memset(owTag.rom, 0, OW_ROM_BYTES);   // Clear ROM buffers to make it obvious when new data is read
+    owTag.result = OWResult::OK;
+    bTagSent = true;
+  }
+#if OW_DS18TEMP
+  bool bTempSent = false;
+  if (owTemp.rom[0]) {
+    if (bTagSent)             serialWrite(",");
+    serialPrintRomID(owTemp.rom, true);
+    serialPrintF(",%.2fC", owTemp.tempC);
+    memset(owTemp.rom, 0, OW_ROM_BYTES);  // Clear ROM buffers to make it obvious when new data is read
+    owTemp.result = OWResult::OK;
+    bTempSent = true;
+  }
+  if (bTagSent || bTempSent)  serialWrite("\n");
+#else
+  if (bTagSent)               serialWrite("\n");
+#endif
+  rs485Status(false);
+}
+
 void setup(void) {
   rs485Setup();                             // Initialise RS485 serial comms
   DevID = USERSIG.read(UR_IDX_DEVID);       // Setup Device ID to be used
   if (DevID == 0xFF)                        // If no valid address set (yet)
     DevID = 0x10;                           // use default
-  out.setOutputMode(1, true, 0, 1);         // ch1 = relay, digital, active-HIGH
+#if DEBUG_LEVEL
   out.configure(0, OUT_INFINITE, 1, 1, 1, 1);
+#else
+  out.configure(0, 0, 0, 0, 0, 0);          // ch0 off (LED)
+#endif
+  out.setOutputMode(1, true, 0, 1);         // ch1 = relay, digital, active-HIGH
   out.configureDigital(1, OUT_STOP, 0, 0);  // relay off
-  if (DEBUG_LEVEL & DEBUG_TRACK) serialPrintFOptions(PO_ADDR | PO_FIRMWARE | PO_SYSSTAT, "Started\n");
+  if (DEBUG_LEVEL & DEBUG_TRACK) serialPrintFOptions(PO_FIRMWARE|PO_SYSSTAT, "Started\n");
 }
 
-void loop() {
+void loop(void) {
   out.update();       /* MUST be first: drive all output channel state machines */
   oneWireReadCheck(); /* 1-Wire tag scan */
-  if (hostReadCmd()) {
+  bool xCmd = hostReadCmd();
+#if (DEBUG_LEVEL & DEBUG_CMD_ECHO)
+  hostFlushEcho();
+#endif
+  if (xCmd) {
     if (DEBUG_LEVEL & DEBUG_CMDBUF)     serialPrintFOptions(PO_CMDBUF, NULL);
     long int iVal = hostConsumeHexValue(2);  // read 1 or 2 hex address bytes
     if (iVal != -1L) {                       // Value hex value found
@@ -335,22 +347,28 @@ void loop() {
         char Command[3];
         iVal = hostConsumeString(Command, sizeof(Command));
         if (DEBUG_LEVEL & DEBUG_CMDBUF)           serialPrintFOptions(PO_CMDBUF, Command);
-        if (strncmp(Command, "OR", 2) == 0)       oneWireRead();
-        else if (strncmp(Command, "OW", 2) == 0)  oneWireWrite();
+        if (iVal == 0)                            systemPoll();
+        else if (strncmp(Command, "AP", 2) == 0)  actuatePWM();
+        else if (strncmp(Command, "OR", 2) == 0)  oneWireReadTag();
+        else if (strncmp(Command, "OW", 2) == 0)  oneWireWriteTag();
+        else if (strncmp(Command, "SA", 2) == 0)  systemSetAddress();
+        else if (strncmp(Command, "SR", 2) == 0)  systemReset();
+      #if DEBUG_LEVEL
         else if (strncmp(Command, "RT", 2) == 0)  outOn(1);
         else if (strncmp(Command, "RF", 2) == 0)  outOff(1);
         else if (strncmp(Command, "LT", 2) == 0)  outOn(0);
         else if (strncmp(Command, "LF", 2) == 0)  outOff(0);
-        else if (strncmp(Command, "AP", 2) == 0)  actuatePWM();
-        else if (strncmp(Command, "SA", 2) == 0)  systemSetAddress();
-        else if (strncmp(Command, "SI", 2) == 0)  serialPrintFOptions(PO_ADDR|PO_FIRMWARE|PO_UPTIME|PO_SYSSTAT|PO_RLY_LED|PO_ONEWIRE|PO_USERROW|PO_EEPROM, NULL);
-        else if (strncmp(Command, "SR", 2) == 0)  systemReset();
-        else                                      { rs485Status(true); serialWrite(helpText); rs485Status(false); }
+        else if (strncmp(Command, "SI", 2) == 0)  serialPrintFOptions(PO_FIRMWARE|PO_UPTIME|PO_SYSSTAT|PO_RLY_LED|PO_1W_BUTTON|PO_USERROW|PO_EEPROM, NULL);
+        else if (DEBUG_LEVEL & DEBUG_TRACK)       serialPrintFOptions(0, helpText);
+      #endif
+        else {
+          // do nothing
+        }
       } else {
-        if (DEBUG_LEVEL & DEBUG_TRACK) { rs485Status(true); serialWrite("Unknown Address\n"); rs485Status(false); }
+        if (DEBUG_LEVEL & DEBUG_TRACK)            serialPrintFOptions(0, "Unknown Address\n");
       }
     } else {
-      if (DEBUG_LEVEL > 2) { rs485Status(true); serialWrite("Invalid packet\n"); rs485Status(false); }
+      if (DEBUG_LEVEL & DEBUG_TRACK)              serialPrintFOptions(0, "Invalid packet\n");
     }
     // Reset ALL command buffer values
     hostCmdReset();
@@ -358,3 +376,55 @@ void loop() {
     // do whatever else requires attention.
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * CHANGELOG
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * 2026-05-11  v0.1.0
+ *   - Initial code
+ *
+ * 2026-05-13  v0.1.1
+ *   - Centralise all formatted print output in single function
+ *
+ * 2026-05-16  v0.1.2
+ *   - Add PWM support for LED
+ *
+ * 2026-05-18  v0.1.3
+ *   - Initial (non-functional) support for Serial1/UART1 debug output on PAx
+ *
+ * 2026-05-18  v0.1.4
+ *   - Separated into multiple source headers
+ *
+ * 2026-05-18  v0.1.5
+ *   - Changes to PWM FSM
+ *
+ * 2026-05-21  v0.1.6
+ *   - Replace iButtonTag library with native OneWire functions
+ *
+ * 2026-05-21  v0.2.0
+ *   - Rewritten 1-Wire support
+ *
+ * 2026-06-12  v0.2.1
+ *   - StatusLED2 → OutputChannel; relay added as ch1 (digital mode)
+ *
+ * 2026-06-12  v0.3.0
+ *   - 1-Wire split into OneWireBus + OneWireTag + DS18Temp
+ *   - oneWireReadCheck auto-detects iButton vs DS18xx
+ *
+ * 2026-06-12  v0.4.0
+ *   - ow485-comms: command history (8 deep), VT100 line editor, immediate
+ *     RS485 echo; CMD_MAX=33
+ *   - Fix bare serialWrite() calls in loop() that bypassed RS485 direction
+ *     control
+ *
+ * 2026-06-15  v0.5.0
+ *   - OW_DS18TEMP flag makes DS18xx support conditional (saves 37 B SRAM
+ *     + DS18Temp.h when disabled)
+ *   - oneWireReadCheck() rewritten: two-pass SEARCH ROM with dedicated
+ *     scanTag — owTag persists until systemPoll() clears it
+ *   - DS18 conversion throttled to OW_DS18_INTERVAL_MS (5 s)
+ *   - systemPoll() added — empty command reports last tag + temperature
+ *   - oneWireRead/Write renamed to oneWireReadTag/WriteTag (static)
+ *   - All build and timing constants moved to platform-ow485.h
+ */

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/andre/.platformio/packages/framework-arduino-megaavr-megatinycore/cores/megatinycore/**)",
+      "PowerShell(& \"C:\\\\Users\\\\andre\\\\.platformio\\\\penv\\\\Scripts\\\\platformio.exe\" run 2>&1)",
+      "PowerShell(cd \"c:\\\\Users\\\\andre\\\\PD1\\\\My files\\\\DevSpace\\\\pio\\\\ow485\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 30)",
+      "PowerShell(cd \"c:\\\\Users\\\\andre\\\\PD1\\\\My files\\\\DevSpace\\\\pio\\\\ow485\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run --environment ow485 -- -DCMD_LEVEL=0 2>&1 | Select-Object -Last 15)",
+      "PowerShell(cd \"c:\\\\Users\\\\andre\\\\PD1\\\\My files\\\\DevSpace\\\\pio\\\\ow485\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 10)",
+      "PowerShell(cd \"c:\\\\Users\\\\andre\\\\PD1\\\\My files\\\\DevSpace\\\\pio\\\\ow485\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 8)",
+      "PowerShell(cd \"c:\\\\Users\\\\andre\\\\PD1\\\\My files\\\\DevSpace\\\\pio\\\\ow485\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 5)"
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Andre M. Maree / KSS Technologies (Pty) Ltd.
 /**
  * OneWireTag.h  —  DS1990 / RW1990 iButton read, write and verify
  *
@@ -53,21 +54,21 @@ private:
  * CHANGELOG
  * ══════════════════════════════════════════════════════════════════════════
  *
- * 2026-06-12  v2 refactor
+ * 2026-06-12
  *   - Refactored to take an OneWireBus& reference; all standard bus ops now
  *     delegate to the shared bus.  Only the RW1990 extended-pulse write
  *     (_writeBitRW) remains local.  OWResult / OW_ROM_BYTES now come from
  *     OneWireBus.h.
- *   - Constants reconciled with v1 hardware-tested values:
+ *   - Constants reconciled with hardware-tested values:
  *       RW_PULSE_ONE_MS  = 6u    (ref spec 5u, hw-validated margin kept)
  *       RW_PULSE_ZERO_MS = 12u   (ref spec 10u, hw-validated margin kept)
  *       RW_SETTLE_MS     = 300u  (ref spec 20u, conservative value kept; uint16_t)
- *       RW_ENTER_MS      = 10u   (same as ref spec; v1 had a 2u typo, now fixed)
+ *       RW_ENTER_MS      = 10u   (same as ref spec; prior had a 2u typo, now fixed)
  *   - printRomCode, printResult moved to OneWireBus; printRomInfo moved to
  *     rs485Support.cpp (tagPrintRomInfo).
  *   - program() made parameterless; call write(true) directly to test 0xC1.
  *
- * 2026-06-12  v1 (monolithic, pre-refactor — recoverable via git tag v1.0)
+ * 2026-06-12  (prior monolithic version — recoverable via git tag v1.0)
  *   - Owned all bus primitives inline (VPORT direct).
  *   - Parameterless API: read/readRaw/scanNext/write/verify/program all
  *     operate on the public rom[] buffer.  Public state: rom[8] + result

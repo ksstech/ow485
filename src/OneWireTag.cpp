@@ -140,17 +140,17 @@ void OneWireTag::_writeBitRW(uint8_t bit)
  * CHANGELOG
  * ══════════════════════════════════════════════════════════════════════════
  *
- * 2026-06-12  v2 refactor
+ * 2026-06-12
  *   - Now delegates reset/read/write/select/crc8 to OneWireBus.  File reduced
  *     to iButton-specific logic only.
- *   - _writeBitRW() switched from direct VPORT access (v1) to Arduino GPIO
- *     via _bus.pin().  The 6–12 ms RW1990 programming pulses have no
- *     µs-level timing sensitivity so function-call overhead is irrelevant.
+ *   - _writeBitRW() switched from direct VPORT access to Arduino GPIO via
+ *     _bus.pin().  The 6–12 ms RW1990 programming pulses have no µs-level
+ *     timing sensitivity so function-call overhead is irrelevant.
  *     See file header for the pullup dependency note.
  *   - write() now checks the post-write reset return value (was unchecked
- *     in v1 New1W draft).
+ *     in the prior monolithic version).
  *
- * 2026-06-12  v1 (monolithic, pre-refactor — recoverable via git tag v1.0)
+ * 2026-06-12  (prior monolithic version — recoverable via git tag v1.0)
  *   - Extended-pulse RW1990 programming using direct VPORT access for all
  *     operations including _writeBitRW.
  */

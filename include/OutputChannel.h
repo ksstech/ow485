@@ -422,14 +422,14 @@ private:
  * CHANGELOG  (complete history — StatusLED.h → StatusLED2.h → OutputChannel.h)
  * ══════════════════════════════════════════════════════════════════════════
  *
- * 2026-06-12  (2)
+ * 2026-06-12
  *   - configureDigital(ch, repeats, onSec, offSec): convenience wrapper that
  *     always zeroes fade stages, making digital call-sites self-documenting.
  *     Permanent ON = (OUT_INFINITE, 65535, 0): FULL_OFF has duration=0 so
  *     _advance skips it without calling _enterStage; pin never written LOW
  *     between cycles.  levelHigh re-asserted harmlessly every 65535 s.
  *
- * 2026-06-12  (1)  —  Renamed and extended from StatusLED2.h (revision 9).
+ * 2026-06-12  — Renamed and extended from StatusLED2.h
  *   Renames:
  *     StatusLED<N_CH>   → OutputChannel<N_CH>
  *     LEDChannel        → OutChannel
@@ -461,7 +461,7 @@ private:
  *
  * ── History inherited from StatusLED2.h ─────────────────────────────────
  *
- * 2026-05-29  (9)
+ * 2026-05-29
  *   - Decoupled from any specific output function.
  *   - Removed: extern serialWrite declaration, printChannel(), printAll().
  *   - Added PrintFHandler type alias: void(*)(const char* fmt, ...).
@@ -471,7 +471,7 @@ private:
  *     allocation, vsnprintf, and RS485 transmission.
  *   - Added printAllF(handler): calls printChannelF() for each channel.
  *
- * 2026-05-29  (8)
+ * 2026-05-29
  *   - formatChannel(): unified to a single format string for all states.
  *     kAbbrev extended to {"FI","ON","FO","OFF","IDLE"} — IDLE is just another
  *     abbreviation; no special-case branch needed.
@@ -479,18 +479,18 @@ private:
  *     durationMs[] out-of-bounds risk (IDLE=4, array 0–3) resolved by
  *     clamping si = stage < 4 ? stage : 0 before the array access.
  *
- * 2026-05-29  (7)
+ * 2026-05-29
  *   - Removed "RUN" token from the running format string in formatChannel().
  *     Any non-IDLE stage implies the channel is running; the token was
  *     redundant.  Saves 4 bytes per line.
  *
- * 2026-05-29  (6)
+ * 2026-05-29
  *   - printChannel/printAll now call serialWrite() instead of managing REDE
  *     and Serial directly; redePin parameter removed from both.
  *   - _transmit() private helper removed (was the only REDE/Serial site).
  *   - extern void serialWrite(const char*) forward-declared in the header.
  *
- * 2026-05-29  (5)  ← major restructure
+ * 2026-05-29  — major restructure
  *   - LEDStage reordered: FADE_IN=0, FULL_ON=1, FADE_OUT=2, FULL_OFF=3,
  *     IDLE=4.  Active stages form a zero-based ring; IDLE sits outside it.
  *   - LEDChannel: four named duration fields (fadeInMs/onMs/fadeOutMs/offMs)
@@ -508,23 +508,23 @@ private:
  *   - Zero-init note: stage=0 now means FADE_IN, not IDLE; constructor and
  *     stop() both explicitly set stage = LEDStage::IDLE.
  *
- * 2026-05-29  (4)
+ * 2026-05-29
  *   - Rewrote printChannel/printAll to use snprintf (RS485 compatible).
  *   - formatChannel(ch, buf, len) builds a complete status line; no Serial I/O.
  *   - printChannel/printAll assert REDE, transmit in one burst, release REDE.
  *   - Removed _printStage() and _printPadded() (replaced by snprintf).
  *   - Added LED_STATUS_BUF = 96 constant for caller buffer sizing.
  *
- * 2026-05-29  (3)
+ * 2026-05-29
  *   - Added formatChannel() / printChannel() / printAll() debug functions.
  *   - Private helpers: _printStage(), _printPadded(), _stageDurationOf(),
  *     _currentPWM().
  *
- * 2026-05-29  (2)
+ * 2026-05-29
  *   - start(): replaced {FADE_IN..FULL_OFF} lookup array with direct
  *     enum-value iteration.  Removes a redundant array; saves 4 bytes stack.
  *
- * 2026-05-29  (1)
+ * 2026-05-29
  *   - State machine reworked to skip zero-duration stages atomically:
  *     _advance() walks forward in one bounded loop without intermediate pin
  *     writes — eliminates the glitch-to-zero between repeats for non-LED
